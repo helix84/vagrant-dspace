@@ -38,59 +38,76 @@ vb_memory = 2048
 
 ####################################  
 
-# Actual Vagrant configs
-Vagrant.configure("2") do |config|
+Vagrant::Config.run do |config|
   # All Vagrant configuration is done here. The most common configuration
   # options are documented and commented below. For a complete reference,
   # please see the online documentation at vagrantup.com.
 
   # Every Vagrant virtual environment requires a box to build off of.
   config.vm.box = "precise64"
+  config.vm.customize ["modifyvm", :id, "--memory", vb_memory]
+  #vb.customize ["modifyvm", :id, "--memory", vb_memory]
 
   # The url from where the 'config.vm.box' box will be fetched if it
   # doesn't already exist on the user's system.
+  # config.vm.box_url = "http://domain.com/path/to/above.box"
   config.vm.box_url = "http://files.vagrantup.com/precise64.box"
 
-  # Hostname for virtual machine
-  config.vm.hostname = "dspace-dev"
-  
-  # Turn on SSH forwarding (so that 'vagrant ssh' has access to your local SSH keys, and you can use your local SSH keys to access GitHub, etc.)
-  config.ssh.forward_agent = true
-  
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine. In the example below,
-  # accessing "localhost:8090" will access port 80 on the VM.
-  config.vm.network :forwarded_port, guest: 80, host: 8090
+  # Boot with a GUI so you can see the screen. (Default is headless)
+  # config.vm.boot_mode = :gui
 
-  # THIS NEXT PART IS A BIT OF A HACK (only necessary for Windows)
-  # Windows currently doesn't support SSH Forwarding when running Vagrant's "Provisioning scripts" (e.g. "config.vm.provision" commands).
-  # Although running "vagrant ssh" will work for SSH Forwarding, "config.vm.provision" commands in this Vagrantfile DO NOT.
-  # Supposedly there's a bug in 'net-ssh' gem (used by Vagrant) which causes SSH forwarding to fail on Windows only
-  # See: https://github.com/mitchellh/vagrant/issues/1735
-  #      https://github.com/mitchellh/vagrant/issues/1404
-  # See also underlying 'net-ssh' bug: https://github.com/net-ssh/net-ssh/issues/55
+  config.vm.host_name = "dspace-dev"
+  config.ssh.forward_agent = true
+
+  # Assign this VM to a host-only network IP, allowing you to access it
+  # via the IP. Host-only networks can talk to the host machine as well as
+  # any other machines on the same network, but cannot be accessed (through this
+  # network interface) by any external networks.
+  # config.vm.network :hostonly, "192.168.33.10"
+
+  # Assign this VM to a bridged network, allowing you to connect directly to a
+  # network using the host's network device. This makes the VM appear as another
+  # physical device on your network.
+  # config.vm.network :bridged
+
+  # Forward a port from the guest to the host, which allows for outside
+  # computers to access the VM, whereas host only networking does not.
+  # config.vm.forward_port 80, 8080
+  config.vm.forward_port 80, 8090
+#  config.vm.network :forwarded_port, guest: 80, host: 8090
+
+  # Share an additional folder to the guest VM. The first argument is
+  # an identifier, the second is the path on the guest to mount the
+  # folder, and the third is the path on the host to the actual folder.
+  # config.vm.share_folder "v-data", "/vagrant_data", "../data"
+#  config.vm.synced_folder "~/.ssh", "/srv/.ssh"                                      
+#  config.vm.provision :shell, :inline => "echo 'Copying local SSH Keys to VM for provisioning...' && mkdir /root/.ssh && cp /srv/.ssh/*_rsa /root/.ssh/ && chmod 600 /root/.ssh/*_rsa"
+
+  config.vm.provision :shell, :path => "puppet-bootstrap-ubuntu.sh"
+
+  # Enable provisioning with Puppet stand alone.  Puppet manifests
+  # are contained in a directory path relative to this Vagrantfile.
+  # You will need to create the manifests directory and a manifest in
+  # the file precise64.pp in the manifests_path directory.
   #
-  # Therefore, we have to "hack it" and manually sync our SSH keys to the Vagrant VM & copy them over to the 'root' user account 
-  # (as 'root' is the account that runs all Vagrant "config.vm.provision" scripts below). This all means 'root' should be able to connect to GitHub as YOU!
-  # Once this Windows bug is fixed, we should be able to just remove these two lines and everything should work via the "config.ssh.forward_agent=true" setting.
-  config.vm.synced_folder "~/.ssh", "/srv/.ssh"                                      
-  config.vm.provision :shell, :inline => "echo 'Copying local SSH Keys to VM for provisioning...' && mkdir /root/.ssh && cp /srv/.ssh/*_rsa /root/.ssh/ && chmod 600 /root/.ssh/*_rsa"
-  
-  ####
-  # Provisioning Scripts
-  #    These scripts run in the order in which they appear, and setup the virtual machine (VM) for us.
-  ####
-  
-  # Create a '/etc/sudoers.d/root_ssh_agent' file which ensures sudo keeps any SSH_AUTH_SOCK settings
-  # This allows sudo commands (like "sudo ssh git@github.com") to have access to local SSH keys (via SSH Forwarding)
-  # See: https://github.com/mitchellh/vagrant/issues/1303
-  config.vm.provision :shell do |shell|
-    shell.inline = "touch $1 && chmod 0440 $1 && echo $2 > $1"
-    shell.args = %q{/etc/sudoers.d/root_ssh_agent "Defaults    env_keep += \"SSH_AUTH_SOCK\""}
-  end
-  
-  # Shell script to initialize latest Puppet on VM
-  # Borrowed from https://github.com/hashicorp/puppet-bootstrap/
+  # An example Puppet manifest to provision the message of the day:
+  #
+  # # group { "puppet":
+  # #   ensure => "present",
+  # # }
+  # #
+  # # File { owner => 0, group => 0, mode => 0644 }
+  # #
+  # # file { '/etc/motd':
+  # #   content => "Welcome to your Vagrant-built virtual machine!
+  # #               Managed by Puppet.\n"
+  # # }
+  #
+  # config.vm.provision :puppet do |puppet|
+  #   puppet.manifests_path = "manifests"
+  #   puppet.manifest_file  = "precise64.pp"
+  # end
+
   config.vm.provision :shell, :path => "puppet-bootstrap-ubuntu.sh"
   
   # Call our Puppet initialization script
@@ -106,7 +123,7 @@ Vagrant.configure("2") do |config|
     #puppet.modules_path = "modules"
     puppet.options = "--verbose"
   end
-  
+
   # Check if ~/.gitconfig exists locally
   # If so, copy basic Git Config settings to Vagrant VM
   if File.exists?(File.join(Dir.home, ".gitconfig"))
@@ -117,21 +134,43 @@ Vagrant.configure("2") do |config|
     # set git email for 'vagrant' user on VM
     config.vm.provision :shell, :inline => "echo 'Saving local git email to VM...' && sudo -i -u vagrant git config --global user.email '#{git_email.chomp}'"
   end
-  
-  #############################################
-  # Customized provider settings for VirtualBox
-  # Many of these settings use VirtualBox's
-  # 'VBoxManage' tool: http://www.virtualbox.org/manual/ch08.html
-  #############################################
-  config.vm.provider :virtualbox do |vb|
-    # Name of the VM created in VirtualBox (Also the name of the subfolder in ~/VirtualBox VMs/ where this VM is kept)
-    vb.name = vb_name
-	
-    # Use VBoxManage to provide Virtual Machine with extra memory (default is only 300MB)
-    vb.customize ["modifyvm", :id, "--memory", vb_memory]
-	
-    # Use VBoxManage to ensure Virtual Machine only has access to 50% of host CPU
-    #vb.customize ["modifyvm", :id, "--cpuexecutioncap", "50"] 	
-  end 
+
+  # Enable provisioning with chef solo, specifying a cookbooks path, roles
+  # path, and data_bags path (all relative to this Vagrantfile), and adding 
+  # some recipes and/or roles.
+  #
+  # config.vm.provision :chef_solo do |chef|
+  #   chef.cookbooks_path = "../my-recipes/cookbooks"
+  #   chef.roles_path = "../my-recipes/roles"
+  #   chef.data_bags_path = "../my-recipes/data_bags"
+  #   chef.add_recipe "mysql"
+  #   chef.add_role "web"
+  #
+  #   # You may also specify custom JSON attributes:
+  #   chef.json = { :mysql_password => "foo" }
+  # end
+
+  # Enable provisioning with chef server, specifying the chef server URL,
+  # and the path to the validation key (relative to this Vagrantfile).
+  #
+  # The Opscode Platform uses HTTPS. Substitute your organization for
+  # ORGNAME in the URL and validation key.
+  #
+  # If you have your own Chef Server, use the appropriate URL, which may be
+  # HTTP instead of HTTPS depending on your configuration. Also change the
+  # validation key to validation.pem.
+  #
+  # config.vm.provision :chef_client do |chef|
+  #   chef.chef_server_url = "https://api.opscode.com/organizations/ORGNAME"
+  #   chef.validation_key_path = "ORGNAME-validator.pem"
+  # end
+  #
+  # If you're using the Opscode platform, your validator client is
+  # ORGNAME-validator, replacing ORGNAME with your organization name.
+  #
+  # IF you have your own Chef Server, the default validation client name is
+  # chef-validator, unless you changed the configuration.
+  #
+  #   chef.validation_client_name = "ORGNAME-validator"
 
 end
